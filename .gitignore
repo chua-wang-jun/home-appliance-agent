@@ -1,0 +1,40 @@
+# 环境变量与密钥
+.env
+.env.*
+!.env.example
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 虚拟环境
+.venv/
+venv/
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.iml
+
+# 日志
+logs/
+*.log
+
+# LangGraph 聊天记忆与来源记录
+data/agent_memory/
+data/chat_history.db
+data/chat_history.db-*
+
+# 本地设备数据，公开仓库只保留示例文件
+data/external_data.json
+
+# 向量数据库缓存
+chromadb/
+rag/chromadb/
+
+# 操作系统文件
+Thumbs.db
+.DS_Store

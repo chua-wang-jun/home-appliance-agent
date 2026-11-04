@@ -1,0 +1,44 @@
+{
+  "records": [
+    {
+      "record_id": "REC-WP-001",
+      "user_id": "user_001",
+      "month": "2026-11",
+      "device_type": "净水器",
+      "device_model": "WP-RO-400G",
+      "metrics": "本月制水量:4200L\n滤芯寿命:15%\n运行时长:720h\n净水TDS去除率:92%",
+      "maintenance": "滤芯更换:剩余30天\n滤芯型号:RO-400G",
+      "alerts": "滤芯寿命低于20%"
+    },
+    {
+      "record_id": "REC-AC-001",
+      "user_id": "user_001",
+      "month": "2026-11",
+      "device_type": "空调",
+      "device_model": "AC-X1",
+      "metrics": "本月运行:86h\n耗电量:102.5kWh\n平均设定温度:26℃",
+      "maintenance": "滤网清洗:建议本月清洗\n上次清洗:2026-10-15",
+      "alerts": "无"
+    },
+    {
+      "record_id": "REC-DH-001",
+      "user_id": "user_001",
+      "month": "2026-11",
+      "device_type": "除湿机",
+      "device_model": "DH-X1",
+      "metrics": "本月运行:42h\n耗电量:18.6kWh\n水箱容量:72%",
+      "maintenance": "水箱清理:建议每周一次\n滤网检查:正常",
+      "alerts": "水箱接近满水"
+    },
+    {
+      "record_id": "REC-WP-002",
+      "user_id": "user_001",
+      "month": "2026-10",
+      "device_type": "净水器",
+      "device_model": "WP-RO-400G",
+      "metrics": "上月制水量:3900L\n滤芯寿命:22%\n运行时长:680h\n净水TDS去除率:93%",
+      "maintenance": "滤芯更换:剩余60天\n滤芯型号:RO-400G",
+      "alerts": "无"
+    }
+  ]
+}

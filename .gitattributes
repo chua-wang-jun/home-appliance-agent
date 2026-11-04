@@ -1,0 +1,19 @@
+# 二进制文件
+*.pdf binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary
+
+# 文本文件
+*.py text
+*.md text
+*.txt text
+*.yml text
+*.yaml text
+*.html text
+*.css text
+*.js text

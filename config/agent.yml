@@ -1,0 +1,2 @@
+external_data_path: data/external_data.json
+max_knowledge_context_chars: 6000

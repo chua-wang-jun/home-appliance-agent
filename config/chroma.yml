@@ -1,0 +1,11 @@
+collection_name: knowledge_base_agent
+persist_directory: chromadb
+data_path: data/knowledge_base
+k: 3
+score_threshold: 0.25
+md5_hex_store: md5.text
+allow_knowledge_file_type: ["txt","pdf","docx"]
+
+chunk_size: 200
+chunk_overlap: 20
+separators: ["\n\n","\n",",",".","，","。","!","?",""," "]
