@@ -1,10 +1,5 @@
-import sqlite3
-from pathlib import Path
-
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
-from langgraph.checkpoint.sqlite import SqliteSaver
-
+from langchain_core.messages import AIMessage, AIMessageChunk
 from agent.tools.agent_tools import (
     fetch_external_data,
     fill_context_for_report,
@@ -19,23 +14,13 @@ from agent.tools.middleware import (
     monitor_tool,
     report_prompt_switch,
 )
+from chat_history.memory import ChatMemory
 from model.factlory import chat_model
 from utils.prompt_loader import load_system_prompts
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHECKPOINT_DIR = PROJECT_ROOT / "data" / "agent_memory"
-CHECKPOINT_DB = CHECKPOINT_DIR / "checkpoints.db"
-
-
 class ReactAgent:
     def __init__(self):
-        CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-        self.checkpointer_conn = sqlite3.connect(
-            CHECKPOINT_DB,
-            check_same_thread=False,
-            timeout=15,
-        )
-        self.checkpointer = SqliteSaver(self.checkpointer_conn)
+        self.memory = ChatMemory()
         self.agent = create_agent(
             model=chat_model,
             system_prompt=load_system_prompts(),
@@ -49,11 +34,11 @@ class ReactAgent:
                 fill_context_for_report,
             ],
             middleware=[monitor_tool, log_before_model, report_prompt_switch],
-            checkpointer=self.checkpointer,
+            checkpointer=self.memory.checkpointer,
         )
 
     def close(self):
-        self.checkpointer_conn.close()
+        self.memory.close()
 
     @staticmethod
     def _build_runtime_context(context: dict | None = None) -> dict:
@@ -85,7 +70,7 @@ class ReactAgent:
         return ""
 
     def _thread_config(self, thread_id: str) -> dict:
-        return {"configurable": {"thread_id": thread_id or "default"}}
+        return self.memory.thread_config(thread_id)
 
     def execute_stream(
         self,
@@ -130,51 +115,13 @@ class ReactAgent:
                 yield text
 
     def get_thread_messages(self, thread_id: str, limit: int = 200) -> list[dict]:
-        state = self.agent.get_state(self._thread_config(thread_id))
-        raw_messages = state.values.get("messages", []) if state.values else []
-        messages = []
-        for message in raw_messages:
-            if isinstance(message, HumanMessage):
-                content = self._message_text(message.content).strip()
-                if content:
-                    messages.append({"role": "user", "content": content})
-            elif isinstance(message, AIMessage):
-                content = self._message_text(message.content).strip()
-                if content:
-                    messages.append({"role": "assistant", "content": content})
-        return messages[-limit:]
+        return self.memory.get_thread_messages(self.agent, thread_id, limit)
 
     def list_threads(self, checkpoint_limit: int = 500) -> list[dict]:
-        latest_checkpoints = {}
-        for checkpoint in self.checkpointer.list(None, limit=checkpoint_limit):
-            thread_id = checkpoint.config["configurable"]["thread_id"]
-            if thread_id not in latest_checkpoints:
-                latest_checkpoints[thread_id] = checkpoint
-
-        conversations = []
-        for thread_id, checkpoint in latest_checkpoints.items():
-            messages = self.get_thread_messages(thread_id)
-            if not messages:
-                continue
-            first_user = next(
-                (item["content"] for item in messages if item["role"] == "user"),
-                "新对话",
-            )
-            updated_at = str(checkpoint.checkpoint.get("ts", ""))
-            conversations.append(
-                {
-                    "id": thread_id,
-                    "title": " ".join(first_user.split())[:36] or "新对话",
-                    "updated_at": updated_at,
-                    "message_count": len(messages),
-                    "last_message": messages[-1]["content"][:120],
-                }
-            )
-        conversations.sort(key=lambda item: item["updated_at"], reverse=True)
-        return conversations
+        return self.memory.list_threads(self.agent, checkpoint_limit)
 
     def delete_thread(self, thread_id: str) -> None:
-        self.checkpointer.delete_thread(thread_id)
+        self.memory.delete_thread(thread_id)
 
 
 if __name__ == "__main__":

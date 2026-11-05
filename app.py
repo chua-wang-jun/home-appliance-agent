@@ -24,11 +24,8 @@ from utils.file_handler import docx_loader
 from utils.logger_handler import logger
 
 HTML_PATH = PROJECT_ROOT / "web" / "index.html"
-CHECKPOINT_DIR = PROJECT_ROOT / "data" / "agent_memory"
-SOURCES_PATH = CHECKPOINT_DIR / "sources.json"
 KB_DIR = PROJECT_ROOT / "data" / "knowledge_base"
 KB_LOCK = threading.Lock()
-SOURCES_LOCK = threading.Lock()
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 agent: ReactAgent | None = None
 
@@ -117,46 +114,6 @@ def media_type_for(path: Path) -> str:
     }.get(path.suffix.lower(), "application/octet-stream")
 
 
-def load_sources_map() -> dict:
-    if not SOURCES_PATH.exists():
-        return {}
-    try:
-        data = json.loads(SOURCES_PATH.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        logger.warning("[sources]读取来源记录失败", exc_info=True)
-        return {}
-
-
-def save_thread_sources(thread_id: str, sources: list[str]) -> None:
-    with SOURCES_LOCK:
-        data = load_sources_map()
-        entries = data.get(thread_id, [])
-        if not isinstance(entries, list):
-            entries = []
-        entries.append(list(dict.fromkeys(sources)))
-        data[thread_id] = entries
-        temp_path = SOURCES_PATH.with_suffix(".tmp")
-        temp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp_path.replace(SOURCES_PATH)
-
-
-def get_thread_sources(thread_id: str) -> list[list[str]]:
-    data = load_sources_map()
-    entries = data.get(thread_id, [])
-    return entries if isinstance(entries, list) else []
-
-
-def delete_thread_sources(thread_id: str) -> None:
-    with SOURCES_LOCK:
-        data = load_sources_map()
-        if thread_id in data:
-            data.pop(thread_id, None)
-            temp_path = SOURCES_PATH.with_suffix(".tmp")
-            temp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            temp_path.replace(SOURCES_PATH)
-
-
 def sse_event(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -164,7 +121,6 @@ def sse_event(event: dict) -> str:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global agent
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     KB_DIR.mkdir(parents=True, exist_ok=True)
     agent = ReactAgent()
     yield
@@ -186,7 +142,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "agent_ready": agent is not None,
-        "memory": str(CHECKPOINT_DIR / "checkpoints.db"),
+        "memory": str(agent.memory.checkpoint_db) if agent is not None else None,
     }
 
 
@@ -211,7 +167,7 @@ def api_get_conversation(conversation_id: str) -> dict:
         "id": conversation_id,
         "title": conversation_title(messages),
         "messages": messages,
-        "sources": get_thread_sources(conversation_id),
+        "sources": agent.memory.get_thread_sources(conversation_id),
     }
 
 
@@ -220,7 +176,6 @@ def api_delete_conversation(conversation_id: str) -> dict:
     if agent is None:
         raise HTTPException(status_code=503, detail="Agent 尚未初始化")
     agent.delete_thread(conversation_id)
-    delete_thread_sources(conversation_id)
     return {"ok": True}
 
 
@@ -411,7 +366,7 @@ def api_chat(payload: ChatRequest):
                     time.sleep(1)
 
             sources = rag_service.get_sources()
-            save_thread_sources(thread_id, sources)
+            agent.memory.save_thread_sources(thread_id, sources)
             yield sse_event({
                 "type": "done",
                 "conversation_id": thread_id,

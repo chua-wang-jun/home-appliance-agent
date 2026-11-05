@@ -24,6 +24,8 @@ logs/
 *.log
 
 # LangGraph 聊天记忆与来源记录
+chat_history/data/*
+!chat_history/data/.gitkeep
 data/agent_memory/
 data/chat_history.db
 data/chat_history.db-*

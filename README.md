@@ -138,31 +138,34 @@ AGENT_USER_ID=user_001
 
 ### 存储位置
 
-Agent 记忆使用 **LangGraph Checkpointer** 持久化：
+Agent 记忆模块代码位于 `chat_history/`，运行数据位于：
 
 ```text
-data/agent_memory/checkpoints.db
+chat_history/data/checkpoints.db
 ```
 
-对应实现：
+核心代码位于 `chat_history/memory.py`：
 
 ```python
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-self.checkpointer_conn = sqlite3.connect(
-    CHECKPOINT_DB,
-    check_same_thread=False,
-    timeout=15,
-)
-self.checkpointer = SqliteSaver(self.checkpointer_conn)
+class ChatMemory:
+    def __init__(self):
+        self.checkpoint_conn = sqlite3.connect(
+            self.checkpoint_db,
+            check_same_thread=False,
+            timeout=15,
+        )
+        self.checkpointer = SqliteSaver(self.checkpoint_conn)
 ```
 
-创建 Agent 时接入：
+`ReactAgent` 只通过记忆模块接入：
 
 ```python
+self.memory = ChatMemory()
 self.agent = create_agent(
     ...,
-    checkpointer=self.checkpointer,
+    checkpointer=self.memory.checkpointer,
 )
 ```
 
@@ -173,16 +176,18 @@ self.agent = create_agent(
 - 服务重启后历史消息仍可恢复；
 - 网页会话列表和消息都从 Checkpointer 读取；
 - 删除会话时调用 `checkpointer.delete_thread(thread_id)`；
-- 回答参考来源保存在 `data/agent_memory/sources.json`，用于历史消息恢复时显示来源。
+- 回答参考来源保存在 `chat_history/data/sources.json`，用于历史消息恢复时显示来源。
+
+> 当前版本使用 `SqliteSaver + sources.json` 实现会话级持久记忆，尚未启用 `InMemoryStore` 或 `SqliteStore` 跨会话长期语义记忆。
 
 ### 清空记忆
 
 先停止服务，再删除：
 
 ```text
-data/agent_memory/checkpoints.db
-data/agent_memory/checkpoints.db-wal
-data/agent_memory/checkpoints.db-shm
+chat_history/data/checkpoints.db
+chat_history/data/checkpoints.db-wal
+chat_history/data/checkpoints.db-shm
 ```
 
 下次启动会自动创建新的空数据库。
@@ -210,14 +215,14 @@ flowchart LR
 |---|---|---|---|---|
 | 网页界面 | `web/index.html` | 聊天交互、历史会话、流式回答、知识库管理、PDF/DOCX 预览和下载 | 用户输入、API 响应、SSE 事件 | 页面交互、聊天请求、知识库操作 |
 | Web / API 层 | `app.py` | FastAPI 路由、SSE 聊天接口、会话接口、知识库 CRUD、文件上传、预览、下载和索引重建触发 | HTTP 请求、上传文件、thread_id | JSON、SSE 流、文件流 |
-| Agent 编排 | `agent/react_agent.py` | 创建 ReAct Agent、接入 LangGraph Checkpointer、管理 thread_id、读取线程消息 | 用户问题、thread_id、runtime context | 流式回答、线程消息 |
+| Agent 编排 | `agent/react_agent.py` | 创建 ReAct Agent，通过 `ChatMemory` 接入 Checkpointer，按 thread_id 执行会话 | 用户问题、thread_id、runtime context | 流式回答、线程消息 |
 | 工具层 | `agent/tools/agent_tools.py` | 提供 RAG、天气、位置、用户 ID、当前月份、外部设备数据和报告触发工具 | 工具参数 | 工具结果文本 |
 | 中间件 | `agent/tools/middleware.py` | 监控工具调用、注入报告上下文、切换动态提示词 | 工具调用、runtime context | 报告上下文、系统提示词 |
 | RAG 服务 | `rag/rag_service.py` | 检索知识、记录命中来源、调用模型总结 | 用户问题、检索 query | 总结文本、来源文件列表 |
 | 向量存储 | `rag/vector_store.py` | 加载 TXT/PDF/DOCX、文本切分、Chroma 入库、索引重建、切分块统计 | 知识文件 | 向量索引、chunk_count |
 | 知识库 | `data/knowledge_base/` | 保存可被 RAG 读取的原始知识文件 | 上传、编辑、删除的文件 | TXT、PDF、DOCX 文件 |
-| 持久记忆 | `data/agent_memory/checkpoints.db` | LangGraph `SqliteSaver` 保存每个会话线程的状态和消息 | thread_id、消息 | 多轮对话状态 |
-| 来源记录 | `data/agent_memory/sources.json` | 保存每次回答命中的参考文件 | thread_id、来源文件列表 | 历史回答的来源信息 |
+| 持久记忆 | `chat_history/memory.py` + `chat_history/data/checkpoints.db` | 封装 LangGraph `SqliteSaver`，保存线程状态、消息和来源 | thread_id、消息 | 多轮对话状态、来源记录 |
+| 来源记录 | `chat_history/data/sources.json` | 保存每次回答命中的参考文件 | thread_id、来源文件列表 | 历史回答的来源信息 |
 | 外部设备数据 | `data/external_data.json` | 保存按用户和月份组织的设备运行记录 | user_id、month | 设备指标、维护和告警数据 |
 | 提示词 | `prompts/` | 定义主助手、RAG 总结和月度报告的行为规范 | 运行时上下文 | 系统提示词、报告模板 |
 
@@ -337,26 +342,30 @@ POST   /api/knowledge/rebuild              重建向量索引
 ## 项目结构
 
 ```text
-agent开发/
+home-appliance-agent/
 ├─ agent/
 │  ├─ react_agent.py
 │  └─ tools/
 │     ├─ agent_tools.py
 │     └─ middleware.py
+├─ chat_history/                    # 记忆模块
+│  ├─ __init__.py
+│  ├─ memory.py                     # Checkpointer、线程消息、来源
+│  ├─ storage.py                    # 来源 JSON 持久化
+│  └─ data/                         # 运行时记忆数据
+│     ├─ checkpoints.db
+│     └─ sources.json
 ├─ config/
 │  ├─ agent.yml
 │  ├─ chroma.yml
 │  ├─ prompts.yml
 │  └─ rag.yml
 ├─ data/
-│  ├─ knowledge_base/             # TXT / PDF / DOCX
-│  ├─ agent_memory/
-│  │  ├─ checkpoints.db
-│  │  └─ sources.json
+│  ├─ knowledge_base/               # TXT / PDF / DOCX
 │  ├─ external_data.json
 │  └─ README.md
 ├─ docs/
-│  └─ images/                     # README 演示截图
+│  └─ images/                       # README 演示截图
 ├─ prompts/
 │  ├─ main_prompt.txt
 │  ├─ report_prompt.txt
@@ -365,13 +374,12 @@ agent开发/
 │  ├─ rag_service.py
 │  └─ vector_store.py
 ├─ utils/
-│  └─ file_handler.py             # TXT / PDF / DOCX 加载器
+│  └─ file_handler.py               # TXT / PDF / DOCX 加载器
 ├─ web/
 │  └─ index.html
 ├─ app.py
-├─ requirements.txt
 ├─ requirements-web.txt
-├─ .env.example
+├─ requirements.txt
 ├─ md5.text
 └─ README.md
 ```

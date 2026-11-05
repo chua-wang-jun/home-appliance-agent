@@ -20,11 +20,11 @@
 
 ## LangGraph 持久化记忆
 
-`agent_memory/checkpoints.db`
+`../chat_history/data/checkpoints.db`
 
-由 `app.py` 通过 LangGraph `SqliteSaver` 自动创建，保存每个会话线程的 Checkpoint 状态和消息历史。删除该目录会清空网页端历史对话和 Agent 记忆。
+由 `chat_history` 记忆模块通过 LangGraph `SqliteSaver` 自动创建，保存每个会话线程的 Checkpoint 状态和消息历史。删除该目录会清空网页端历史对话和 Agent 记忆。
 
-`agent_memory/sources.json`
+`../chat_history/data/sources.json`
 
 保存每次回答命中的知识来源文件，用于历史消息恢复时展示“参考文件”。
 
@@ -36,3 +36,5 @@
 - 支持文件类型：TXT、PDF、DOCX
 
 网页“知识库管理”中的保存、上传和删除操作会自动重建向量索引。
+
+当前使用 `SqliteSaver + sources.json` 实现会话级持久记忆，尚未启用 `InMemoryStore` 或 `SqliteStore` 跨会话长期语义记忆。
